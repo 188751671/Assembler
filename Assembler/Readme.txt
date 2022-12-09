@@ -1,6 +1,7 @@
 ----------------------------------------
 Using IntelliJ to load the project.
 
+a.sal & b.sal are for testing
 -----------------------------------------
 Edge case Test:
  
