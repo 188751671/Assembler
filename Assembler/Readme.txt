@@ -43,17 +43,3 @@ substring starting with:
 r1/R1   register 0-7
 #123    constant
 123     address
-
-
-dataDealer
-        String subs[];
-        while((subs[] = getNextline)!=null){
-
-            if sub[0]==".code"{
-                call  code-dealer
-            }
-            ...... dealing with data.....
-        }
-        // here means there are no .code section after .data
-        System.err.println("no .code section after .data);
-        return;
