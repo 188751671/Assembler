@@ -1,0 +1,15 @@
+// jjjj
+.data
+    sum
+    x
+
+.code
+loop:
+   //Comment 2
+   LOAD r0, x           //line9
+   ADD r0, #345
+   INC r1,  r7               // Comment 4
+   STORE r0, sum
+   JMP loop
+   JGT r2, loop
+End:

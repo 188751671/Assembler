@@ -1,0 +1,12 @@
+.data
+    sum
+    x
+    y
+.code
+    LOAD r1, x
+    INC r1
+    STORE r1, x
+    LOAD r0, sum
+    ADD r0, r1
+    DEC r0
+    STORE r0, y
