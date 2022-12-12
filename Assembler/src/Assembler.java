@@ -1,12 +1,16 @@
 import java.io.*;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Assembler {
-    static final int HEAP_START_ADDR = 1024;
+    static final int HEAP_START_ADDR = 0;
     static int lineCount=0;
     static String newFilename;
     protected static BufferedReader br;
     protected static SymbolTable symbolTable = new SymbolTable();
     static CodeTranslationUtils utils = new CodeTranslationUtils();
+
+    static HashMap<Integer,String> pendings = new HashMap<>();   // K line , V operandString
 
     public static void main(String[] args) throws IOException {
 
@@ -32,8 +36,41 @@ public class Assembler {
             dataProcessor();
 
         codeProcessor();
-    }
 
+        if (!pendings.isEmpty())
+            callBack();
+        else
+            BinFileWriter.writeFile();
+        
+        //callBack();
+        // 1. At Jumps, getSymbolAddr(). If not in table.    ( on jumps, don't forget nextCodeAddr increment )
+        //          record nextCodeAddr and codeTag value.
+        //
+        // 2. Callback: check codeTag more than 6bits or not.
+        //          locate the 6:   substrings[1].lines()
+        //                          buffer.split("\n");
+    }
+    private static void callBack() throws IOException {
+
+        String[] str = BinFileWriter.buffer.split("\\n");
+        StringBuilder str_builder = new StringBuilder();
+
+        for (Map.Entry<Integer,String> set: pendings.entrySet()) {
+            int line = set.getKey(); // line
+            String codeTag = set.getValue(); // string tag
+
+            int addr_int = symbolTable.getSymbolValue(codeTag);
+            String addr_6bits  = utils.GapFillerWith0(Integer.toBinaryString(addr_int),6);
+            str[line] = str[line].substring(0,10) + addr_6bits;
+        }
+
+        for (String a: str) {
+            str_builder.append(a);
+            str_builder.append("\n");
+        }
+
+        BinFileWriter.writeFile(str_builder.toString());
+    }
     private static void dataProcessor() throws IOException {
         String[] substrings;
         while((substrings = getSubstringsOfNextValidLine()) !=null ){
@@ -199,18 +236,34 @@ public class Assembler {
         }
         if (utils.isConstant(operand)) {
             String binaryBits = utils.getConstantInBinary(operand);
-            if (binaryBits.length()==6){
-                bits16.append("0");     // size
-                bits16.append("01");    // RVA 01 -- Operand is Constant
-                bits16.append(binaryBits);
-                return BinFileWriter.writeBits(bits16.toString());
+            if (operand.startsWith("#")){
+                if (binaryBits.length()==6){
+                    bits16.append("0");     // size
+                    bits16.append("01");    // RVA 01 -- Operand is Constant
+                    bits16.append(binaryBits);
+                    return BinFileWriter.writeBits(bits16.toString());
+                }else {
+                    bits16.append("1");     // size 1
+                    bits16.append("01");    // RVA 01 -- Operand is Constant / value
+                    bits16.append("000000");// 000000   -- value is in the next 16bits
+                    BinFileWriter.writeBits(bits16.toString());
+                    return BinFileWriter.writeBits(binaryBits);
+                }
             }else {
-                bits16.append("1");     // size 1
-                bits16.append("01");    // RVA 01 -- Operand is Constant / value
-                bits16.append("000000");// 000000   -- value is in the next 16bits
-                BinFileWriter.writeBits(bits16.toString());
-                return BinFileWriter.writeBits(binaryBits);
+                if (binaryBits.length()==6){
+                    bits16.append("0");     // size
+                    bits16.append("10");    // RVA 01 -- Operand is Constant
+                    bits16.append(binaryBits);
+                    return BinFileWriter.writeBits(bits16.toString());
+                }else {
+                    bits16.append("1");     // size 1
+                    bits16.append("10");    // RVA 01 -- Operand is Constant / value
+                    bits16.append("000000");// 000000   -- value is in the next 16bits
+                    BinFileWriter.writeBits(bits16.toString());
+                    return BinFileWriter.writeBits(binaryBits);
+                }
             }
+
         }
         if (symbolTable.isValidSymbol(operand)){
             Integer value = symbolTable.getSymbolValue(operand);
@@ -219,36 +272,26 @@ public class Assembler {
                 if (str.length()>6){
                     str = utils.GapFillerWith0(str,22);
                     bits16.append("1");     // size 1
-                    bits16.append("01");    // RVA 01 -- Operand is Constant / value
+                    bits16.append("10");    // RVA 10 -- Address ( variable or codeTag )
                     bits16.append(str.substring(0,6));
                     BinFileWriter.writeBits(bits16.toString());
                     return BinFileWriter.writeBits(str.substring(6,22));
                 }else {
-                    bits16.append("0");     // size 1
-                    bits16.append("01");
-                    bits16.append(str.substring(0,6));
-                    return BinFileWriter.writeBits(bits16.toString());
-                }
-            }
-            Integer addr = symbolTable.getCodeAddrTag(operand);
-            if (addr!=null){
-                String str = Integer.toBinaryString(addr);
-                if (str.length()>6){
-                    str = utils.GapFillerWith0(str,22);
-                    bits16.append("1");     // size 1
-                    bits16.append("10");    // RVA 10 -- Operand is an address
-                    bits16.append(str.substring(0,6));
-                    BinFileWriter.writeBits(bits16.toString());
-                    return BinFileWriter.writeBits(utils.GapFillerWith0(str,22).substring(6,22));
-                }else {
-                    bits16.append("0");     // size 1
-                    bits16.append("10");
+                    bits16.append("0");     // size 0
+                    bits16.append("10");    // RVA 10 -- Address ( variable or codeTag )
                     bits16.append(utils.GapFillerWith0(str,6));
                     return BinFileWriter.writeBits(bits16.toString());
                 }
+            }else { // If It's not in table, a potential CodeAddrTag. Record info and return true
+                pendings.put(BinFileWriter.getNextCodeAddr(),operand);
+                bits16.append("0");     // size 0
+                bits16.append("10");    // RVA 10 -- Address ( variable or codeTag )
+                bits16.append("000000");  // temporarily set 6bits 0
+                return BinFileWriter.writeBits(bits16.toString());
             }
         }
-        System.err.println("operandBinaryStringBuilder : Unrecognized Operand at line"+lineCount);
+
+        System.err.println("operandHanlder : Unrecognized Operand at line"+lineCount);
         return false;   // Unrecognized Operand
     }
 
