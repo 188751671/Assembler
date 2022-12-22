@@ -12,7 +12,7 @@ class BinFileWriter {
     static int nextCodeAddr = 0;
 
     public BinFileWriter() throws IOException {
-        fileWriter = new FileOutputStream(new File(Assembler.newFilename));
+        fileWriter = new FileOutputStream(Assembler.newFilename);
     }
     public static int getNextCodeAddr() {
         return nextCodeAddr;
